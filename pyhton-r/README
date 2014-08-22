@@ -1,0 +1,16 @@
+########### stephane kazmierczak 2014 ##################
+#
+# simple test of different ontology R package within python
+#
+
+
+- install requirement with pip
+    as root
+    # pip2.7 install rpy2
+
+- install R package topGo from bioconductor
+    as root
+    # R
+    source("http://bioconductor.org/biocLite.R")
+    biocLite("topGO")
+
