@@ -83,17 +83,21 @@ def go_enrichment(genes2go, genes_list, algo, min_node):
 
     # print "go enrichment object created"
     #
-    # results = R.runTest(GOdata, algorithm=algo, statistic="fisher")
+    results = R.runTest(GOdata, algorithm=algo, statistic="fisher")
+    print results
+
     #
     # scores = R.score(results)
-    # results_table = R.GenTable(GOdata)
+    results_table = R.GenTable(GOdata,
+                               classic = results,
+                               orderBy = "classic",
+                               ranksOf = "classicFisher",
+                               topNodes = 10)
+    print results
     #
-    # #print results_table
-
+    #print results_table
 
 def parse_go_map(input_go_map_file, genes_list):
-
-
 
     genes2go = collections.defaultdict(list)
 
@@ -108,26 +112,26 @@ def parse_go_map(input_go_map_file, genes_list):
         #if gene_name in genes_list:
         genes2go[gene_name].append(go_id)
 
-    with open('gene_anno_custom', 'w') as f:
-
-        firstLine = True
-        for key in genes2go:
-            fristItem = True
-            for item in genes2go.get(key):
-                if item[:2] == "GO":
-                    if fristItem:
-                        if firstLine:
-                            f.write(key+"\t")
-                            firstLine = False
-                        else:
-                            f.write("\n"+key+"\t")
-
-                        f.write(item)
-                        fristItem = False
-                    else:
-                        f.write(","+item)
-
-    f.close()
+    # with open('gene_anno_custom', 'w') as f:
+    #
+    #     firstLine = True
+    #     for key in genes2go:
+    #         fristItem = True
+    #         for item in genes2go.get(key):
+    #             if item[:2] == "GO":
+    #                 if fristItem:
+    #                     if firstLine:
+    #                         f.write(key+"\t")
+    #                         firstLine = False
+    #                     else:
+    #                         f.write("\n"+key+"\t")
+    #
+    #                     f.write(item)
+    #                     fristItem = False
+    #                 else:
+    #                     f.write(","+item)
+    #
+    # f.close()
 
     return genes2go
 

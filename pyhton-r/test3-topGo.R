@@ -81,6 +81,8 @@ GOdata = new("topGOdata",
 
 #######################################################
 
+library(topGO)
+setwd("/work/bio-informatics/pyhton-r")
 
 geneID2GO = readMappings("gene_anno_custom")
 
@@ -89,12 +91,22 @@ myInterestingGenes = sample(geneNames, length(geneNames)/4)
 geneList = factor(as.integer(geneNames %in% myInterestingGenes))
 names(geneList) <- geneNames
 
-
 GOdata = new("topGOdata",
              ontology="MF",
              allGenes=geneList,
              annot=annFUN.gene2GO,
              gene2GO=geneID2GO)
+
+result <- runTest(GOdata,
+                  algorithm = "classic",
+                  statistic = "fisher")
+
+result_table <- GenTable(GOdata,
+                   classic = result,
+                   orderBy = "classic",
+                   ranksOf = "classicFisher",
+                   topNodes = 10)
+
 
 ###################################################
 
@@ -109,9 +121,11 @@ names(geneList) <- geneNames
 GOdata <- new("topGOdata", ontology = "MF", allGenes = geneList,
               annot = annFUN.gene2GO, gene2GO = geneID2GO)
 
+
+
+
+
 ######################################################
-
-
 
 library(topGO)
 
@@ -132,20 +146,23 @@ names(map) <- a[, 3]
 map <- lapply(map, function(x) gsub(" ", "", strsplit(x, split = IDsep)[[1]]))
 
 
-
-
-
 geneNames <- scan(file='subset.txt', what=character())
 myInterestingGenes = sample(geneNames, length(geneNames)/2)
 geneList <- factor(as.integer(geneNames %in% myInterestingGenes))
 names(geneList) <- geneNames
 
-GOdataBP <- new("topGOdata",
+GOdata <- new("topGOdata",
                 ontology = "MF", 
                 allGenes = geneList, 
                 annot = annFUN.gene2GO,
                 gene2GO = map
 )
+
+
+result <- runTest(GOdata)
+
+
+
 
 #####################################
 # verif resultat 
