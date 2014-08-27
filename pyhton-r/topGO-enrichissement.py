@@ -84,17 +84,23 @@ def go_enrichment(gene_association, subset, algo, minnode):
     return significant
 
 
+
+
 def main():
     topGO = init_topGO()
+
     significant = go_enrichment(args.gene_association,
                                 args.test_ids,
                                 args.algorithm,
                                 args.min)
+
     name = os.path.splitext(args.test_ids)[0]+".ora"
+
     with open(name, "wb") as handle:
         handle.write("#GOTERM\tP-Value\tFDR-adjusted\n")
         for s in significant:
             line = "\t".join(s)+"\n"
             handle.write(line)
+
 if __name__ == "__main__":
     main()

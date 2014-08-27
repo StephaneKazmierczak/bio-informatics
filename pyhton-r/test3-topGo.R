@@ -266,6 +266,9 @@ result <- runTest(GOdata)
 # clean python code
 # ensembl map
 # http://davetang.org/muse/
+#
+# using ensembl instead of hgnc reduce the number of entry in annotation_file 
+# make a giant qwery to get all hgnc to ensembl
 #####################################
 
 ontology = ontology(GOdata)
@@ -312,8 +315,8 @@ mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
 test <- 'ENSG00000118473'
 getBM(attributes=c('ensembl_gene_id', "hgnc_symbol"), filters = "ensembl_gene_id", values=test, mart=mart)
 
-test <- c('CDC46', 'CDC46', 'CDCA8', 'RAD51', 'RRM2', 'FIGNL1', 'BUB1', 'CCNB1', 'AURKB', 'KNTC1', 'CDC18L')
-test <- 'CDC46'
+test <- c('CDCA5', 'BIRC5', 'CDCA8', 'RAD51', 'RRM2', 'FIGNL1', 'BUB1', 'CCNB1', 'AURKB', 'KNTC1', 'CDC18L')
+test <- 'AOPEP'
 getBM(attributes=c('ensembl_gene_id', "hgnc_symbol"), filters = "hgnc_symbol", values=test, mart=mart)
 
 

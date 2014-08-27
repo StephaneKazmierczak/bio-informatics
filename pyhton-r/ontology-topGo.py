@@ -5,28 +5,57 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import r as R, DataFrame
 
 
+__topGo = None
+__biomaRt = None
+__mart = None
+__mart_db = "hsapiens_gene_ensembl"
+
+
 def init_topGO():
-    try:
-        topGO = importr("topGO")
-    except:
-        print ("It looks like topGO is not installed. Trying to install topGO via"
-               "Bioconductor...")
+    global __topGo
+
+    if __topGo is None:
         try:
-            R.source("http://bioconductor.org/biocLite.R")
-            R.biocLite("topGO")
             topGO = importr("topGO")
         except:
-            print "Problem installing topGO from Bioconductor!"
-            print ("Please install manually from: "
-                   "http://www.bioconductor.org/packages/2.13/bioc/html/topGO.html")
-    return topGO
+            print ("It looks like topGO is not installed. Trying to install topGO via"
+                   "Bioconductor...")
+            try:
+                R.source("http://bioconductor.org/biocLite.R")
+                R.biocLite("topGO")
+                topGO = importr("topGO")
+            except:
+                print "Problem installing topGO from Bioconductor!"
+                print ("Please install manually from: "
+                       "http://www.bioconductor.org/packages/release/bioc/html/topGO.html")
+        __topGo = topGO
 
+def init_biomaRt():
+
+    global __biomaRt
+    global __mart
+    if __biomaRt is None:
+
+        try:
+            biomaRt = importr("biomaRt")
+        except:
+            print ("It looks like biomaRt is not installed. Trying to install biomaRt via"
+                   "Bioconductor...")
+            try:
+                R.source("http://bioconductor.org/biocLite.R")
+                R.biocLite("biomaRt")
+                biomaRt = importr("biomaRt")
+            except:
+                print "Problem installing biomaRt from Bioconductor!"
+                print ("Please install manually from: "
+                       "http://www.bioconductor.org/packages/release/bioc/html/biomaRt.html")
+
+        __biomaRt = biomaRt
+        __mart = R.useMart(biomart = "ensembl", dataset = __mart_db)
 
 def main():
 
     init_topGO()
-
-
 
     nodeSize = 10
     algo = "classic"  # choice from classic, elim, weight
@@ -42,12 +71,6 @@ def main():
     go_enrichment(genes2go, genes_list, algo, nodeSize)
 
 
-
-
-# def pyDict2List(d):
-#
-#     for key in d:
-#         for item in d.get(key):
 
 def go_enrichment(genes2go, genes_list, algo, nodeSize):
     print "start go enrichment func"
@@ -123,58 +146,88 @@ def go_enrichment(genes2go, genes_list, algo, nodeSize):
 
 
 
-def parse_go_map(input_go_map_file, genes_list):
+def __parse_go_map(input_go_map_file):
+
+    """
+    parse a go map file from http://geneontology.org/
+    :param input_go_map_file: file
+    :return: genes2go dictionary
+    """
 
     genes2go = collections.defaultdict(list)
 
     for line in input_go_map_file:
-        split_line = line.split("\t")
+        if line[0] != "!":
+            sline = line.split("\t")
+            gene_name = sline[2].strip()
+            go_id = sline[4].strip()
+            genes2go[gene_name].append(go_id)
 
-        gene_name = split_line[2].strip()
-        go_id = split_line[4].strip()
-
-        #print "line ="+str(line)
-        #print "go_id ="+str(go_id)
-        #if gene_name in genes_list:
-        genes2go[gene_name].append(go_id)
-
-    # with open('gene_anno_custom', 'w') as f:
-    #
-    #     firstLine = True
-    #     for key in genes2go:
-    #         fristItem = True
-    #         for item in genes2go.get(key):
-    #             if item[:2] == "GO":
-    #                 if fristItem:
-    #                     if firstLine:
-    #                         f.write(key+"\t")
-    #                         firstLine = False
-    #                     else:
-    #                         f.write("\n"+key+"\t")
-    #
-    #                     f.write(item)
-    #                     fristItem = False
-    #                 else:
-    #                     f.write(","+item)
-    #
-    # f.close()
-
-    return genes2go
+    return dict(genes2go)
 
 
-def create_genes2go_file(gene_annotation_file, ):
-    pass
+def mk_genes2go_file(gene_annotation_file):
+
+    with open(gene_annotation_file) as f:
+        genes2go = __parse_go_map(f)
+    f.close()
+
+    with open('gene_annotation_genes2go', 'w') as f:
+        firstLine = True
+        for key in genes2go:
+            # ensembl_id = convert_hgnc2ensembl(key)
+            # if ensembl_id is not None:
+            fristItem = True
+            for item in genes2go.get(key):
+                if fristItem:
+                    if firstLine:
+                        f.write(key+"\t")
+                        firstLine = False
+                    else:
+                        f.write("\n"+key+"\t")
+
+                    f.write(item)
+                    fristItem = False
+                else:
+                    f.write(","+item)
+    f.close()
+
+
+def convert_ensembl2hgnc(ensembl_id):
+    init_biomaRt()
+
+    v = R.c(ensembl_id)
+    res = R.getBM(attributes=R.c("hgnc_symbol"), filters="ensembl_gene_id", values=v, mart=__mart)
+
+    try:
+        return R.get("hgnc_symbol", res)[0]
+    except:
+        print 'Error convert_ensembl2hgnc: '+str(ensembl_id)+' not found in database'
+        return None
+
+def convert_hgnc2ensembl(hgnc_id):
+    init_biomaRt()
+
+    v = R.c(hgnc_id)
+    res = R.getBM(attributes=R.c("ensembl_gene_id"), filters="hgnc_symbol", values=v, mart=__mart)
+
+    try:
+        return R.get("ensembl_gene_id", res)[0]
+    except:
+        print 'Error convert_hgnc2ensembl: '+str(hgnc_id)+' not found in database'
+        return None
 
 
 
-def parse_input_csv(input_csv_file):
-    # # extract the list of gene from a dummy file colum 2
-    reader = csv.reader(input_csv_file)
-    reader.next()  # remove header
-    all_genes = list()
-    for row in reader:
-        all_genes.append(row[1])
-    return all_genes
+def test():
+    #print convert_hgnc2ensembl("BIRC5")
+    #print convert_hgnc2ensembl("CDC46")
+
+    #print convert_ensembl2hgnc("ENSG00000118473")
+    #print convert_ensembl2hgnc("dfdfdf")
+
+    mk_genes2go_file("gene_association.goa_human")
 
 if __name__ == "__main__":
-    main()
+    #main()
+    test()
