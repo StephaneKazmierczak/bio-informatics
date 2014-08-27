@@ -5,8 +5,6 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import r as R, DataFrame
 
 
-
-
 def init_topGO():
     try:
         topGO = importr("topGO")
@@ -27,7 +25,10 @@ def init_topGO():
 def main():
 
     init_topGO()
-    min_node = 10
+
+
+
+    nodeSize = 10
     algo = "classic"  # choice from classic, elim, weight
     input_csv = "gene_data_hs.csv"
     input_go_map = "gene_association.goa_human_noHeader"
@@ -38,7 +39,7 @@ def main():
     with open(input_go_map) as input_go_map_file:
         genes2go = parse_go_map(input_go_map_file, genes_list)
 
-    go_enrichment(genes2go, genes_list, algo, min_node)
+    go_enrichment(genes2go, genes_list, algo, nodeSize)
 
 
 
@@ -48,7 +49,7 @@ def main():
 #     for key in d:
 #         for item in d.get(key):
 
-def go_enrichment(genes2go, genes_list, algo, min_node):
+def go_enrichment(genes2go, genes_list, algo, nodeSize):
     print "start go enrichment func"
 
 
@@ -71,31 +72,56 @@ def go_enrichment(genes2go, genes_list, algo, min_node):
     genes_of_interest = R("factor(as.integer(%s %%in%% %s))" % (refset.r_repr(), testset.r_repr()))
     genes_of_interest = R.setNames(genes_of_interest, refset)
 
-
-    o = "MF"
-    GOdata = R.new("topGOdata",
-                    ontology="MF",
-                    annot=R["annFUN.gene2GO"],
-                    allGenes=genes_of_interest,
-                    gene2GO=genes2go
+    significant = collections.defaultdict(float)
+    for o in ["MF", "BP", "CC"]:
+    #o = "BP"
+        GOdata = R.new("topGOdata",
+                   ontology=o,
+                   annot=R["annFUN.gene2GO"],
+                   allGenes=genes_of_interest,
+                   gene2GO=genes2go,
+                   nodeSize=nodeSize
                    )
+
+        pvalueHash = R.score(R.runTest(GOdata, algorithm=algo, statistic="fisher"))
+
+        for i in range(len(pvalueHash)):
+            if pvalueHash[i] < 0.05:
+                significant[pvalueHash.names[i]] = pvalueHash[i]
+
+        #print significant
+
+    GO2Pval = collections.OrderedDict(sorted(significant.items(), key=lambda t: t[1]))
+
+    #print GO2Pval
+
+    i=0
+    for k,v in GO2Pval.items():
+        if i < 100 :
+            print str(k)+":"+str(v)
+            i += 1
+        else:
+            break
 
 
     # print "go enrichment object created"
     #
-    results = R.runTest(GOdata, algorithm=algo, statistic="fisher")
-    print results
+    #results = R.runTest(GOdata, algorithm=algo, statistic="fisher")
+    #print results
 
     #
     # scores = R.score(results)
-    results_table = R.GenTable(GOdata,
-                               classic = results,
-                               orderBy = "classic",
-                               ranksOf = "classicFisher",
-                               topNodes = 10)
-    print results
+    #results_table = R.GenTable(GOdata,
+    #                           classic = results,
+    #                           orderBy = "classic",
+    #                           ranksOf = "classicFisher",
+    #                           topNodes = 10)
+    #print results
     #
     #print results_table
+
+
+
 
 def parse_go_map(input_go_map_file, genes_list):
 
@@ -134,6 +160,11 @@ def parse_go_map(input_go_map_file, genes_list):
     # f.close()
 
     return genes2go
+
+
+def create_genes2go_file(gene_annotation_file, ):
+    pass
+
 
 
 def parse_input_csv(input_csv_file):
