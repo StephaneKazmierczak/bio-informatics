@@ -1,14 +1,24 @@
 __author__ = 'sk'
-import csv
 import collections
+import ntpath
+import argparse
+import csv
 from rpy2.robjects.packages import importr
-from rpy2.robjects import r as R, DataFrame
+from rpy2.robjects import r as R
+from datetime import datetime
 
-
+__qvalue = None
 __topGo = None
 __biomaRt = None
 __mart = None
-__mart_db = "hsapiens_gene_ensembl"
+__mart_dataset = "hsapiens_gene_ensembl"
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-mkGenes2go", type=str, default=None,
+                    help="Create a genes2go mapping file, needs a gene association file from geneontology.org")
+
+args = parser.parse_args()
 
 
 def init_topGO():
@@ -16,6 +26,7 @@ def init_topGO():
 
     if __topGo is None:
         try:
+            print "Importing topGO ..."
             topGO = importr("topGO")
         except:
             print ("It looks like topGO is not installed. Trying to install topGO via"
@@ -37,6 +48,7 @@ def init_biomaRt():
     if __biomaRt is None:
 
         try:
+            print "Importing biomaRt ..."
             biomaRt = importr("biomaRt")
         except:
             print ("It looks like biomaRt is not installed. Trying to install biomaRt via"
@@ -51,99 +63,144 @@ def init_biomaRt():
                        "http://www.bioconductor.org/packages/release/bioc/html/biomaRt.html")
 
         __biomaRt = biomaRt
-        __mart = R.useMart(biomart = "ensembl", dataset = __mart_db)
+        __mart = R.useMart(biomart = "ensembl", dataset = __mart_dataset)
 
-def main():
 
-    init_topGO()
+def init_qvalue():
+    global __qvalue
 
-    nodeSize = 10
-    algo = "classic"  # choice from classic, elim, weight
-    input_csv = "gene_data_hs.csv"
-    input_go_map = "gene_association.goa_human_noHeader"
+    if __qvalue is None:
+        try:
+            print "Importing qvalue ..."
+            qvalue = importr("qvalue")
+        except:
+            print ("It looks like qvalue is not installed. Trying to install qvalue via"
+                   "Bioconductor...")
+            try:
+                R.source("http://bioconductor.org/biocLite.R")
+                R.biocLite("qvalue")
+                qvalue = importr("qvalue")
+            except:
+                print "Problem installing qvalue from Bioconductor!"
+                print ("Please install manually from: "
+                       "http://www.bioconductor.org/packages/release/bioc/html/qvalue.html")
+        __qvalue = qvalue
 
-    with open(input_csv) as input_csv_file:
-        genes_list = parse_input_csv(input_csv_file)
 
-    with open(input_go_map) as input_go_map_file:
-        genes2go = parse_go_map(input_go_map_file, genes_list)
+def __add_adjusted_pvalues(dictionary):
 
-    go_enrichment(genes2go, genes_list, algo, nodeSize)
 
+    pvalues = []
+
+    for key, item in dictionary.items():
+        pvalues.append(dictionary[key]['pval'])
+
+    fdr = R["p.adjust"](pvalues, method="fdr")
+    by = R["p.adjust"](pvalues, method="BY")
+
+    i = 0
+    for key, item in dictionary.items():
+        item['FDR'] = fdr[i]
+        item['BY'] = by[i]
+        i += 1
+    #
+    #
+    #
+    #
+    #     dictionary[key]['BH'] = bh
+    #     dictionary[key]['FDR'] = fdr
+    #
+    #     print "pvalue "+str(dictionary[key]['pval'])
+    #     print "fdr "+str(R["p.adjust"](dictionary[key]['pval'], method="fdr"))
+
+
+
+
+
+    return dictionary
+
+
+def __add_GO_info(dictionary):
+
+    whichTerms = R.c(dictionary.keys())
+    qTerms = R.paste(R.paste("'", whichTerms, "'", sep=""), collapse=",")
+    retVal = R.dbGetQuery(R.GO_dbconn(), R.paste("SELECT ontology, go_id, term, definition FROM go_term WHERE go_id IN (", qTerms, ");", sep=""))
+
+
+    for iter in retVal.iter_row():
+        go_id = iter.rx2('go_id')[0]
+        ontology = iter.rx2('ontology')[0]
+        term = iter.rx2('term')[0]
+        definition = iter.rx2('definition')[0]
+
+        dictionary[go_id]['ontology'] = ontology
+        dictionary[go_id]['term'] = term
+        dictionary[go_id]['definition'] = definition
+
+    return dictionary
+
+
+def __save_results(dictionary):
+
+    with open("ontology_results_"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+".csv", 'w') as f:
+
+        line="GO:ID\tTerm\tPvalue\tFDR\tBenjamini-Yekutieli"
+        print line
+        f.write(line+'\n')
+
+        for k, v in dictionary.items():
+            line = str(k)+"\t"+str(v['pval'])+"\t"+str(v['FDR'])+"\t"+str(v['BY'])+"\t"+str(v['term'])
+            print line
+            f.write(line+'\n')
+
+    f.close()
 
 
 def go_enrichment(genes2go, genes_list, algo, nodeSize):
-    print "start go enrichment func"
 
+    init_topGO()
+    #init_qvalue()
 
-    # genes_of_interest = collections.defaultdict(list)
-    # for key in genes2go.keys():
-    #     if key in genes_list:
-    #         genes_of_interest[key] = 1
-    #     else:
-    #         genes_of_interest[key] = 0
-    #print genes_of_interest['BIRC5']
+    genes2go_map = R.readMappings(file=genes2go)
+    subset = genes_list
+    refset = R.names(genes2go_map)
 
-    genes2go = R.readMappings(file='gene_anno_custom')
-    testset = R.scan(file='subset.txt', what=R.character())
-    testset = R.sample(testset, R("length(%s)/10" % testset.r_repr()))
-
-    refset = R.names(genes2go)
-
-
-
-    genes_of_interest = R("factor(as.integer(%s %%in%% %s))" % (refset.r_repr(), testset.r_repr()))
+    genes_of_interest = R("factor(as.integer(%s %%in%% %s))" % (refset.r_repr(), subset.r_repr()))
     genes_of_interest = R.setNames(genes_of_interest, refset)
 
-    significant = collections.defaultdict(float)
+    score = collections.defaultdict(dict)
+
     for o in ["MF", "BP", "CC"]:
-    #o = "BP"
+    #for o in ["MF"]:
         GOdata = R.new("topGOdata",
                    ontology=o,
                    annot=R["annFUN.gene2GO"],
                    allGenes=genes_of_interest,
-                   gene2GO=genes2go,
+                   gene2GO=genes2go_map,
                    nodeSize=nodeSize
                    )
 
-        pvalueHash = R.score(R.runTest(GOdata, algorithm=algo, statistic="fisher"))
+        scoreR = R.score(R.runTest(GOdata, algorithm=algo, statistic="fisher"))
 
-        for i in range(len(pvalueHash)):
-            if pvalueHash[i] < 0.05:
-                significant[pvalueHash.names[i]] = pvalueHash[i]
+        for i in range(len(scoreR)):
+            if scoreR[i] < 0.05:
+                score[scoreR.names[i]] = {"pval": scoreR[i]}
 
-        #print significant
+    score = collections.OrderedDict(sorted(score.items(), key=lambda t: t[1]))
+    score = __add_adjusted_pvalues(score)
+    score = __add_GO_info(score)
 
-    GO2Pval = collections.OrderedDict(sorted(significant.items(), key=lambda t: t[1]))
-
-    #print GO2Pval
-
-    i=0
-    for k,v in GO2Pval.items():
-        if i < 100 :
-            print str(k)+":"+str(v)
-            i += 1
-        else:
-            break
-
-
-    # print "go enrichment object created"
-    #
+    __save_results(score)
     #results = R.runTest(GOdata, algorithm=algo, statistic="fisher")
     #print results
 
-    #
     # scores = R.score(results)
     #results_table = R.GenTable(GOdata,
     #                           classic = results,
     #                           orderBy = "classic",
     #                           ranksOf = "classicFisher",
     #                           topNodes = 10)
-    #print results
-    #
     #print results_table
-
-
 
 
 def __parse_go_map(input_go_map_file):
@@ -167,12 +224,15 @@ def __parse_go_map(input_go_map_file):
 
 
 def mk_genes2go_file(gene_annotation_file):
+    print "Starting genes2go mapping"
 
     with open(gene_annotation_file) as f:
         genes2go = __parse_go_map(f)
     f.close()
 
-    with open('gene_annotation_genes2go', 'w') as f:
+    file_name = ntpath.basename(gene_annotation_file)
+
+    with open(file_name+'_genes2go', 'w') as f:
         firstLine = True
         for key in genes2go:
             # ensembl_id = convert_hgnc2ensembl(key)
@@ -191,9 +251,25 @@ def mk_genes2go_file(gene_annotation_file):
                 else:
                     f.write(","+item)
     f.close()
+    print "Genes2go mapping file "+file_name+"_genes2go completed"
+
+
+def convert_list_ensembl2hgnc(ensembl_id_list):
+
+    init_biomaRt()
+
+    v = R.c(ensembl_id_list)
+    res = R.getBM(attributes=R.c("hgnc_symbol"), filters="ensembl_gene_id", values=v, mart=__mart)
+
+    try:
+        return R.get("hgnc_symbol", res)
+    except:
+        print 'Error convert_ensembl2hgnc: '+str(ensembl_id)+' not found in database'
+        return None
 
 
 def convert_ensembl2hgnc(ensembl_id):
+
     init_biomaRt()
 
     v = R.c(ensembl_id)
@@ -206,6 +282,7 @@ def convert_ensembl2hgnc(ensembl_id):
         return None
 
 def convert_hgnc2ensembl(hgnc_id):
+
     init_biomaRt()
 
     v = R.c(hgnc_id)
@@ -223,11 +300,45 @@ def test():
     #print convert_hgnc2ensembl("BIRC5")
     #print convert_hgnc2ensembl("CDC46")
 
-    #print convert_ensembl2hgnc("ENSG00000118473")
+    #print convert_list_ensembl2hgnc(['ENSG00000118473','ENSG00000089685','ENSG00000100297','ENSG00000134690'])
     #print convert_ensembl2hgnc("dfdfdf")
 
-    mk_genes2go_file("gene_association.goa_human")
+    #mk_genes2go_file("gene_association.goa_human")
+    pass
+
+
+def main():
+
+    init_topGO()
+
+    nodeSize = 10
+    algo = "classic"  # choice from classic, elim, weight
+    input_gene_subset = "gene_subset.txt"
+    input_genes2go_map = "gene_association.goa_human_genes2go"
+
+    gene_list = R.scan(file=input_gene_subset, what=R.character())
+    gene_list = convert_list_ensembl2hgnc(gene_list)
+
+
+    #gene_list = R.sample(gene_list, R("length(%s)/10" % gene_list.r_repr()))
+
+    go_enrichment(input_genes2go_map, gene_list, algo, nodeSize)
+
+
 
 if __name__ == "__main__":
-    #main()
-    test()
+
+    if args.mkGenes2go is not None:
+        mk_genes2go_file(args.mkGenes2go)
+    else:
+        main()
+
+        # d = {'a': robjects.IntVector((1,2,3)), 'b': robjects.IntVector((4,5,6))}
+        # dataf = robjects.DataFrame(d)
+        # print(dataf)
+        #
+        # for iter in dataf.iter_row():
+        #     print iter
+        #     print iter.rx2('a')[0]
+
+    #test()

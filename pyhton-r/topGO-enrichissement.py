@@ -67,8 +67,8 @@ def go_enrichment(gene_association, subset, algo, minnode):
     # Use the setNames function instead of this R code,
     # names(genes_of_interest) <- refset
     # because Python cannot assign to values
-
     genes_of_interest = R.setNames(genes_of_interest, refset)
+
     for o in ["MF", "BP", "CC"]:
         GOdata = R.new("topGOdata",
                        ontology=o,

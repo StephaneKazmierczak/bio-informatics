@@ -278,7 +278,7 @@ qTerms <- paste(paste("'", whichTerms, "'", sep = ""), collapse = ",")
 retVal <- dbGetQuery(GO_dbconn(), paste("SELECT term, go_id FROM go_term WHERE ontology IN",
                                         "('", ontology, "') AND go_id IN (", qTerms, ");", sep = ""))
 
-whichTerms = "GO:0000279"
+whichTerms = c("GO:0000279","GO:0005694")
 qTerms <- paste(paste("'", whichTerms, "'", sep = ""), collapse = ",")
 retVal <- dbGetQuery(GO_dbconn(), paste("SELECT ontology, go_id, term, definition FROM go_term WHERE go_id IN (", qTerms, ");", sep = ""))
 retVal
@@ -309,10 +309,12 @@ retVal$term
 ############################################## convert ensembl to hgnc
 
 library(biomaRt)
+mart <- useMart(biomart = "ensembl")
 mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
 
 
 test <- 'ENSG00000118473'
+test <- c('ENSG00000118473','ENSG00000089685','ENSG00000100297','ENSG00000134690')
 getBM(attributes=c('ensembl_gene_id', "hgnc_symbol"), filters = "ensembl_gene_id", values=test, mart=mart)
 
 test <- c('CDCA5', 'BIRC5', 'CDCA8', 'RAD51', 'RRM2', 'FIGNL1', 'BUB1', 'CCNB1', 'AURKB', 'KNTC1', 'CDC18L')
